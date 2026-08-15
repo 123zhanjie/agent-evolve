@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>agent-evolve · 通用智能体进化机制（开源项目）</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1f2430; --muted:#6b7280; --line:#e5e7eb; --blue:#2563eb; --green:#16a34a; --amber:#d97706; --red:#dc2626; --violet:#7c3aed; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink); line-height:1.75; padding:40px 20px; }
+  .wrap { max-width:900px; margin:0 auto; }
+  header { text-align:center; margin-bottom:36px; }
+  header h1 { font-size:28px; }
+  header .tag { color:var(--muted); font-size:15px; margin-top:6px; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:999px; font-size:13px; font-weight:600; }
+  .b-blue{background:#dbeafe;color:var(--blue);} .b-green{background:#dcfce7;color:var(--green);}
+  .b-amber{background:#fef3c7;color:var(--amber);} .b-red{background:#fee2e2;color:var(--red);} .b-violet{background:#ede9fe;color:var(--violet);}
+  section { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:24px 28px; margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+  h2 { font-size:19px; margin-bottom:14px; }
+  h3 { font-size:15.5px; margin:14px 0 6px; }
+  p, li { font-size:14.5px; }
+  ul, ol { padding-left:22px; }
+  .muted { color:var(--muted); font-size:13.5px; }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; margin-top:8px; }
+  th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:#f9fafb; font-weight:600; }
+  tr:last-child td { border-bottom:none; }
+  code { background:#f1f5f9; border-radius:4px; padding:1px 6px; font-size:13px; font-family:ui-monospace,Menlo,monospace; }
+  pre { background:#0f172a; color:#e2e8f0; border-radius:10px; padding:16px 18px; font-size:13px; overflow-x:auto; line-height:1.6; margin-top:10px; }
+  pre code { background:none; padding:0; color:inherit; }
+  .timeline { position:relative; padding-left:30px; margin-top:8px; }
+  .timeline::before { content:""; position:absolute; left:10px; top:6px; bottom:6px; width:2px; background:var(--line); }
+  .step { position:relative; margin-bottom:16px; }
+  .step:last-child { margin-bottom:0; }
+  .step-marker { position:absolute; left:-30px; top:3px; width:22px; height:22px; border-radius:50%; background:var(--blue); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 4px var(--card); }
+  .step-title { font-weight:700; }
+  .step-text { color:var(--muted); font-size:14px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .card h4 { font-size:14px; margin-bottom:4px; }
+  .card p { font-size:13.5px; color:var(--muted); }
+  .flow { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:10px; }
+  .node { background:#f0f4ff; border:1.5px solid #bfdbfe; border-radius:10px; padding:10px 14px; font-size:13px; }
+  .node b { color:var(--blue); display:block; font-size:13.5px; }
+  .arrow { color:var(--blue); font-weight:700; }
+  footer { text-align:center; color:var(--muted); font-size:13px; margin-top:8px; }
+  @media (max-width:640px){ .grid{grid-template-columns:1fr;} section{padding:18px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>agent-evolve</h1>
+  <p class="tag">Universal Agent Evolution Protocol · 让任何智能体学会记住你的偏好，且全程由你把关</p>
+  <p style="margin-top:10px;">
+    <span class="badge b-green">MIT License</span>
+    <span class="badge b-blue">Python 3.10+</span>
+    <span class="badge b-violet">零第三方依赖</span>
+    <span class="badge b-amber">v0.1 MVP</span>
+  </p>
+</header>
+
+<section>
+  <h2>项目定位</h2>
+  <p>agent-evolve 把「进化学习」从平台特性变成开源工具：<b>扫描对话历史 → 按频率与纠错模式统计信号 → 生成带证据链的提案 → 人工审批 → 备份应用 → 台账回滚</b>。任何智能体（OpenClaw、Claude Code、自研 Agent）都可以挂载使用。</p>
+  <p style="margin-top:8px;">它解决三个问题：会话失忆（偏好反复交代）、噪音沉淀（单次提及当长期规则）、黑箱学习（悄悄改自己，不可审计）。</p>
+</section>
+
+<section>
+  <h2>核心流程</h2>
+  <div class="flow">
+    <div class="node"><b>扫描</b>history/ 对话日志<br>关键词命中 + 触发词分类</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>统计</b>score = Σ(次数 × 权重 × 时间衰减)</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>提案</b>过阈值 + 去重<br>附证据链</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>审批</b>人类 approve<br>写入台账</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>应用</b>备份 → 合并<br>进受保护文件</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>回滚</b>从备份恢复</div>
+  </div>
+  <p class="muted" style="margin-top:10px;">发现全自动，写入永远需要人类批准。这是本项目不可妥协的安全红线。</p>
+</section>
+
+<section>
+  <h2>信号模型</h2>
+  <table>
+    <tr><th>信号</th><th>含义</th><th>权重</th><th>示例</th></tr>
+    <tr><td><span class="badge b-red">correction</span></td><td>用户主动纠正</td><td>1.0</td><td>说了别用冒号，你又用了</td></tr>
+    <tr><td><span class="badge b-red">explicit</span></td><td>明确要求记住</td><td>1.0</td><td>以后报告都用表格</td></tr>
+    <tr><td><span class="badge b-amber">repeat</span></td><td>跨会话重复提及</td><td>0.7</td><td>配图要白底（多次提到）</td></tr>
+    <tr><td><span class="badge b-blue">acceptance</span></td><td>采用且零纠正（弱信号）</td><td>0.3</td><td>某种格式从未被纠正</td></tr>
+  </table>
+  <p class="muted" style="margin-top:8px;">时间衰减：近 30 天权重 1.0，每 30 天衰减，最低 0.2，防止陈旧偏好长期占位。</p>
+</section>
+
+<section>
+  <h2>CLI 一览</h2>
+  <pre><code>evolve init            # 初始化工作区
+evolve scan            # 扫描对话，输出信号统计
+evolve propose         # 过阈值主题生成提案
+evolve list            # 列出提案与状态
+evolve approve &lt;id&gt;    # 人工批准（写台账）
+evolve reject &lt;id&gt;     # 拒绝（保留原因）
+evolve apply &lt;id&gt;      # 备份 + 合并 + 台账
+evolve rollback &lt;id&gt;   # 从备份恢复</code></pre>
+</section>
+
+<section>
+  <h2>设计要点</h2>
+  <div class="grid">
+    <div class="card"><h4>🔒 发现与写入分离</h4><p>scan / propose 可 cron 全自动；apply 前必须有人类 approve，且全程留痕。</p></div>
+    <div class="card"><h4>📁 文件即状态</h4><p>信号、提案、台账、备份全是普通文件，git 友好，可审计、可手工修复。</p></div>
+    <div class="card"><h4>🧩 平台无关</h4><p>纯 CLI + 文件，任何能读写文件、执行命令的智能体都能挂载。</p></div>
+    <div class="card"><h4>🧾 证据链</h4><p>每条提案附信号样本（类型、原文引用、来源文件），人类可逐条核查。</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>路线图</h2>
+  <div class="timeline">
+    <div class="step"><span class="step-marker">✓</span><div class="step-title">v0.1 MVP（当前）</div><div class="step-text">信号扫描、统计、提案、CLI 审批、应用与回滚，示例数据跑通。</div></div>
+    <div class="step"><span class="step-marker">2</span><div class="step-title">v0.2 规则细化 + 语义匹配</div><div class="step-text">已有规则条目的 diff 合并与版本化；可选 embedding 后端提升匹配精度。</div></div>
+    <div class="step"><span class="step-marker">3</span><div class="step-title">v0.3 平台适配器</div><div class="step-text">OpenClaw / Claude Code hook 脚本开箱即用；Web 审批 UI。</div></div>
+    <div class="step"><span class="step-marker">4</span><div class="step-title">v1.0 平台化</div><div class="step-text">硬写保护（宿主框架集成）、多用户权限、规则冲突检测。</div></div>
+  </div>
+</section>
+
+<section>
+  <h2>贡献方式</h2>
+  <ul>
+    <li>试用并反馈：跑示例数据，调整 <code>rules/config.json</code> 的主题词表与阈值</li>
+    <li>补适配器：为你的智能体平台写 5 接口适配说明（trigger / propose / approve / apply / audit）</li>
+    <li>实现 v0.2：规则细化模块、embedding 语义匹配（保持零依赖内核，embedding 做成可选后端）</li>
+  </ul>
+</section>
+
+<footer>agent-evolve · Universal Agent Evolution Protocol · 开源项目介绍页</footer>
+</div>
+</body>
+</html>

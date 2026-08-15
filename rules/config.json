@@ -1,0 +1,16 @@
+{
+  "profile": "active",
+  "thresholds": {
+    "correction": 2,
+    "repeat": 3,
+    "explicit": 1
+  },
+  "min_score": 2.0,
+  "decay_days": 30,
+  "topics": {
+    "中文标点规则": ["冒号", "破折号"],
+    "配图风格": ["配图", "白底", "麦肯锡", "500dpi", "遮挡"],
+    "输出格式": ["表格", "列表", "bullet"]
+  },
+  "protected_files": ["MEMORY.md", "AGENTS.md"]
+}

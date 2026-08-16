@@ -44,7 +44,7 @@ def _paths(root: Path) -> dict:
 def cmd_init(args) -> int:
     root = Path(args.root)
     p = _paths(root)
-    for d in (p["history"], p["rules"], p["pending"], p["approved"], p["rejected"], p["backups"], p["ledger"].parent, p["templates"].parent, p["memory"]):
+    for d in (p["history"], p["rules"].parent, p["pending"], p["approved"], p["rejected"], p["backups"], p["ledger"].parent, p["templates"].parent, p["memory"]):
         d.mkdir(parents=True, exist_ok=True)
     cfg = p["rules"]
     if not cfg.exists():
@@ -80,7 +80,7 @@ def cmd_propose(args) -> int:
     config = core.load_config(p["rules"])
     signals = core.scan_history(p["history"], config)
     stats = core.aggregate(signals)
-    created = core.build_proposals(stats, config, p["pending"], args.min_score)
+    created = core.build_proposals(stats, config, p["pending"], args.min_score if args.min_score is not None else config.get("min_score", 2.0))
     if created:
         for f in created:
             print(f"created {f.name}")
@@ -191,25 +191,30 @@ def main(argv=None) -> int:
     ap.add_argument("--root", default=".", help="evolution workspace root (default: .)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("init", help="scaffold workspace")
-    sp = sub.add_parser("scan", help="scan conversations and print signal stats")
+    def _sub(name: str, help: str):
+        sp = sub.add_parser(name, help=help)
+        sp.add_argument("--root", default=argparse.SUPPRESS)
+        return sp
+
+    _sub("init", "scaffold workspace")
+    sp = _sub("scan", "scan conversations and print signal stats")
     sp.add_argument("--history", default=None, help="history dir (default: <root>/history)")
-    sp = sub.add_parser("propose", help="create proposals for topics above threshold")
+    sp = _sub("propose", "create proposals for topics above threshold")
     sp.add_argument("--min-score", type=float, default=None, help="minimum aggregated score")
-    sp = sub.add_parser("list", help="list proposals")
+    sp = _sub("list", "list proposals")
     sp.add_argument("--status", choices=["pending", "approved", "rejected", "applied"], default=None)
-    sp = sub.add_parser("approve", help="approve a pending proposal (HUMAN ONLY)")
+    sp = _sub("approve", "approve a pending proposal (HUMAN ONLY)")
     sp.add_argument("id")
     sp.add_argument("--approver", default="human")
-    sp = sub.add_parser("reject", help="reject a pending proposal")
+    sp = _sub("reject", "reject a pending proposal")
     sp.add_argument("id")
     sp.add_argument("--reason", default="")
-    sp = sub.add_parser("apply", help="apply an approved proposal")
+    sp = _sub("apply", "apply an approved proposal")
     sp.add_argument("id")
-    sp = sub.add_parser("rollback", help="restore pre-apply backup")
+    sp = _sub("rollback", "restore pre-apply backup")
     sp.add_argument("id")
-    sp = sub.add_parser("rules", help="list parsed rule entries from the rules file")
-    sp = sub.add_parser("refine", help="detect refinement signals and create diff proposals")
+    _sub("rules", "list parsed rule entries from the rules file")
+    sp = _sub("refine", "detect refinement signals and create diff proposals")
     sp.add_argument("--history", default=None, help="history dir (default: <root>/history)")
 
     args = ap.parse_args(argv)

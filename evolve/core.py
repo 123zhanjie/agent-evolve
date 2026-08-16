@@ -238,8 +238,10 @@ def apply_proposal(proposals_dir: Path, backups_dir: Path, ledger_path: Path, pi
         target = (root / "memory" / meta["target"]).resolve()
     snap = backups_dir / pid
     snap.mkdir(parents=True, exist_ok=True)
-    if target.exists():
-        shutil.copy2(target, snap / target.name)
+    if not target.exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.touch()
+    shutil.copy2(target, snap / target.name)
     kind = meta.get("kind", "new")
     if kind == "refine":
         _apply_refine(target, body, pid)

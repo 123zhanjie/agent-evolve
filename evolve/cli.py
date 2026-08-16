@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -139,6 +140,52 @@ def cmd_rollback(args) -> int:
     return 0
 
 
+def cmd_rules(args) -> int:
+    root = Path(args.root)
+    p = _paths(root)
+    config = core.load_config(p["rules"])
+    rules_path = root / config.get("rules_file", "memory/MEMORY.md")
+    if not rules_path.exists():
+        print(f"rules file not found: {rules_path}")
+        return 1
+    entries = core.parse_rules_entries(rules_path.read_text(encoding="utf-8"))
+    print(f"{len(entries)} rule entries in {rules_path}")
+    for e in entries:
+        print(f"  [{e['section']}] {e['text']}")
+    return 0
+
+
+def cmd_refine(args) -> int:
+    root = Path(args.root)
+    p = _paths(root)
+    config = core.load_config(p["rules"])
+    rules_path = root / config.get("rules_file", "memory/MEMORY.md")
+    if not rules_path.exists():
+        print(f"rules file not found: {rules_path}")
+        return 1
+    entries = core.parse_rules_entries(rules_path.read_text(encoding="utf-8"))
+    trigger_words = config.get("refine_trigger_words", core.REFINE_TRIGGER_WORDS)
+    signals: list[dict] = []
+    for f in sorted(Path(args.history).rglob("*")):
+        if not f.is_file() or f.suffix.lower() not in (".md", ".txt", ".jsonl"):
+            continue
+        raw = f.read_text(encoding="utf-8", errors="ignore")
+        for para in re.split(r"\n\s*\n", raw):
+            if para.strip():
+                signals.extend(core.detect_refinement_signals(para, entries, trigger_words))
+    print(f"found {len(signals)} refinement signal(s)")
+    for s in signals:
+        print(f"  match: {s['head']}  triggers={s['triggers']}")
+        print(f"    quote: {s['quote'][:80]}")
+    created = core.build_refinement_proposals(signals, config, p["pending"])
+    if created:
+        for f in created:
+            print(f"created refine proposal {f.name}")
+    else:
+        print("no refine proposals created")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="evolve", description="Universal Agent Evolution Protocol CLI")
     ap.add_argument("--root", default=".", help="evolution workspace root (default: .)")
@@ -161,9 +208,12 @@ def main(argv=None) -> int:
     sp.add_argument("id")
     sp = sub.add_parser("rollback", help="restore pre-apply backup")
     sp.add_argument("id")
+    sp = sub.add_parser("rules", help="list parsed rule entries from the rules file")
+    sp = sub.add_parser("refine", help="detect refinement signals and create diff proposals")
+    sp.add_argument("--history", default=None, help="history dir (default: <root>/history)")
 
     args = ap.parse_args(argv)
-    if args.cmd == "scan" and args.history is None:
+    if args.cmd in ("scan", "refine") and (args.history is None or not Path(args.history).exists()):
         args.history = str(_paths(Path(args.root))["history"])
 
     handlers = {
@@ -175,6 +225,8 @@ def main(argv=None) -> int:
         "reject": cmd_reject,
         "apply": cmd_apply,
         "rollback": cmd_rollback,
+        "rules": cmd_rules,
+        "refine": cmd_refine,
     }
     return handlers[args.cmd](args)
 

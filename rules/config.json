@@ -12,5 +12,13 @@
     "配图风格": ["配图", "白底", "麦肯锡", "500dpi", "遮挡"],
     "输出格式": ["表格", "列表", "bullet"]
   },
-  "protected_files": ["MEMORY.md", "AGENTS.md"]
+  "protected_files": ["MEMORY.md", "AGENTS.md"],
+  "rules_file": "memory/MEMORY.md",
+  "refine_trigger_words": [
+    "还要注意", "另外", "补充", "具体来说", "还有", "以及",
+    "细化", "调整", "改成", "更新", "记得加", "加上", "注意一下"
+  ],
+  "embedding": {
+    "provider": "local"
+  }
 }

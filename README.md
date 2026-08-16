@@ -6,6 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-violet.svg)
 
 一个零依赖、平台无关的开源工具：扫描对话历史 → 按频率与纠错模式统计信号 → 生成带证据链的提案 → 人工审批 → 备份应用 → 台账回滚。发现是自动的，写入永远需要人类批准。
 
@@ -67,6 +68,8 @@ python3 -m evolve.cli propose --min-score 1.5
 | `evolve reject <id>` | 拒绝提案（保留原因） |
 | `evolve apply <id>` | 应用已批准提案：备份 → 合并 → 台账 |
 | `evolve rollback <id>` | 从备份恢复，退回上一版本 |
+| `evolve refine` | 检测规则细化信号，生成 diff 提案（v0.2） |
+| `evolve rules` | 列出规则文件中的已有条目（v0.2） |
 
 ## 工作原理
 
@@ -96,6 +99,19 @@ rollback: 从 backups/ 恢复
 | acceptance | 采用且未被纠正（弱信号） | 0.3 |
 
 时间衰减：近 30 天权重 1.0，之后每 30 天衰减一次，最低 0.2，防止陈旧偏好长期占位。
+
+### 规则细化（v0.2）
+
+已有规则粒度不够、执行总不到位时，用户在对话中补充的细节会被自动识别为**细化信号**：
+
+```
+已有条目主干（如「配图偏好」）命中 + 细化触发词（还要注意 / 补充 / 调整…）
+        │  match_entry: 语义相似度匹配（local: difflib，可换 embedding 后端）
+        ▼
+diff 提案（## 原条目 → ## 建议改动）→ 人工审批 → 版本化替换（自动备份）
+```
+
+细化提案与新增提案共用审批流，应用时按 `kind` 分流：`new` 追加新条目，`refine` 替换旧条目。每次应用前自动备份，可回滚。
 
 ## 目录结构
 
@@ -136,8 +152,8 @@ bash install.sh            # 或 bash install.sh --local
 
 ## 路线图
 
-- **v0.1（当前）**：信号扫描 + 统计 + 提案 + CLI 审批 + 应用/回滚
-- **v0.2**：规则细化模块（已有条目的 diff 合并与版本化）、embedding 语义匹配
+- **v0.1**：信号扫描 + 统计 + 提案 + CLI 审批 + 应用/回滚
+- **v0.2（当前）**：规则细化模块（diff 提案 + 版本化替换）、语义匹配（local 零依赖后端，embedding 可插拔）
 - **v0.3**：平台适配器开箱（OpenClaw / Claude Code hook 脚本）、Web 审批 UI
 - **v1.0**：硬写保护（宿主框架集成）、多用户权限、规则冲突检测
 

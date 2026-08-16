@@ -18,6 +18,7 @@ import json
 import re
 import shutil
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 
 VERSION = "0.1.0"
@@ -239,12 +240,34 @@ def apply_proposal(proposals_dir: Path, backups_dir: Path, ledger_path: Path, pi
     snap.mkdir(parents=True, exist_ok=True)
     if target.exists():
         shutil.copy2(target, snap / target.name)
-    addition = f"\n\n<!-- applied from {pid} on {now_iso()} -->\n{body.split('## 理由', 1)[0].replace('## 建议改动', '## 规则').strip()}\n"
-    with target.open("a", encoding="utf-8") as fh:
-        fh.write(addition)
+    kind = meta.get("kind", "new")
+    if kind == "refine":
+        _apply_refine(target, body, pid)
+    else:
+        addition = f"\n\n<!-- applied from {pid} on {now_iso()} -->\n{body.split('## 理由', 1)[0].replace('## 建议改动', '## 规则').strip()}\n"
+        with target.open("a", encoding="utf-8") as fh:
+            fh.write(addition)
     set_status(p, "applied")
-    ledger_append(ledger_path, {"action": "apply", "proposal_id": pid, "target": str(target)})
+    ledger_append(ledger_path, {"action": "apply", "proposal_id": pid, "target": str(target), "kind": kind})
     return str(target)
+
+
+def _section(body: str, title: str) -> str:
+    m = re.search(rf"^## {re.escape(title)}\n(.*?)(?=^## |\Z)", body, re.S | re.M)
+    return m.group(1).strip() if m else ""
+
+
+def _apply_refine(target: Path, body: str, pid: str) -> None:
+    """Replace the original rule entry with the refined one (versioned)."""
+    old_block = _section(body, "原条目")
+    new_block = _section(body, "建议改动")
+    if not old_block or not new_block:
+        raise RuntimeError(f"refine proposal {pid} is missing 原条目/建议改动 sections")
+    text = target.read_text(encoding="utf-8")
+    if old_block not in text:
+        raise RuntimeError(f"original entry not found in {target}; refusing to apply")
+    text = text.replace(old_block, new_block, 1)
+    target.write_text(text, encoding="utf-8")
 
 
 def rollback_proposal(proposals_dir: Path, backups_dir: Path, ledger_path: Path, pid: str) -> str:
@@ -267,3 +290,115 @@ def rollback_proposal(proposals_dir: Path, backups_dir: Path, ledger_path: Path,
     set_status(p, "approved")
     ledger_append(ledger_path, {"action": "rollback", "proposal_id": pid, "target": str(orig)})
     return str(orig)
+
+
+# ---------------------------------------------------------------- v0.2 refinement
+
+REFINE_TRIGGER_WORDS = [
+    "还要注意", "另外", "补充", "具体来说", "还有", "以及",
+    "细化", "调整", "改成", "更新", "记得加", "加上", "注意一下",
+]
+
+REFINE_PROPOSAL_TEMPLATE = """---
+id: {id}
+status: pending
+profile: {profile}
+kind: refine
+topic: {topic}
+target: {target}
+created: {created}
+---
+## 原条目
+{old_entry}
+
+## 建议改动
+{new_entry}
+
+## 理由
+对话中出现针对已有规则「{topic}」的更细要求，匹配相似度 {score:.2f}，建议细化该条目。
+
+## 候选依据
+{evidence}
+"""
+
+
+def parse_rules_entries(text: str) -> list[dict]:
+    """Extract rule entries: '- item' bullets and '### title' lines grouped by '## section'."""
+    entries: list[dict] = []
+    section = "通用"
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("## "):
+            section = line[3:].strip()
+        elif line.startswith("- ") or line.startswith("* "):
+            entries.append({"section": section, "text": line[2:].strip()})
+        elif line.startswith("### "):
+            entries.append({"section": section, "text": line[4:].strip()})
+    return entries
+
+
+def entry_head(entry_text: str, max_len: int = 12) -> str:
+    """Leading fragment of an entry used for keyword matching."""
+    head = entry_text.split("：")[0].split(":")[0].strip()
+    return head[:max_len]
+
+
+def semantic_similarity(query: str, text: str, provider: str = "local") -> float:
+    """Similarity backend. 'local' is the zero-dependency difflib scorer.
+
+    Optional providers (openai / sentence-transformers) can be plugged in
+    behind this function without touching the rest of the pipeline.
+    """
+    if provider in ("none", "local"):
+        return SequenceMatcher(None, query, text).ratio()
+    raise NotImplementedError(
+        f"embedding provider '{provider}' requires optional dependencies; see docs/embedding.md"
+    )
+
+
+def detect_refinement_signals(text: str, entries: list[dict], trigger_words: list[str]) -> list[dict]:
+    """A refinement signal = the head of an existing rule entry appears in the
+    conversation together with a refinement trigger phrase."""
+    signals = []
+    for e in entries:
+        head = entry_head(e["text"])
+        if not head or len(head) < 2:
+            continue
+        if head in text:
+            trig = [t for t in trigger_words if t in text]
+            if trig:
+                signals.append({"entry": e, "head": head, "triggers": trig, "quote": text.strip()[:200]})
+    return signals
+
+
+def build_refinement_proposals(signals: list[dict], config: dict, proposals_dir: Path) -> list[Path]:
+    """For each refinement signal, propose merging the new detail into the matched entry.
+    Proposals are diff-style (原条目 -> 建议改动); human approval required before apply."""
+    proposals_dir.mkdir(parents=True, exist_ok=True)
+    created: list[Path] = []
+    provider = config.get("embedding", {}).get("provider", "local")
+    seen: set[str] = set()
+    for s in signals:
+        entry = s["entry"]
+        key = entry["text"][:20]
+        if key in seen:
+            continue
+        seen.add(key)
+        pid = _next_id(proposals_dir, entry["text"][:12])
+        merged = f"{entry['text']}；{s['quote']}" if entry["text"] else s["quote"]
+        evidence = "\n".join(f"- [{t}] {s['quote']}" for t in s["triggers"])
+        body = REFINE_PROPOSAL_TEMPLATE.format(
+            id=pid,
+            profile=config["profile"],
+            topic=entry["text"][:20],
+            target=config.get("rules_file", "memory/MEMORY.md"),
+            created=now_iso(),
+            old_entry=entry["text"],
+            new_entry=merged,
+            score=semantic_similarity(entry["text"], s["quote"], provider),
+            evidence=evidence,
+        )
+        p = proposals_dir / f"{pid}.md"
+        p.write_text(body, encoding="utf-8")
+        created.append(p)
+    return created

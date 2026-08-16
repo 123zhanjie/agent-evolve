@@ -51,6 +51,37 @@ applied  →  rollback(): 从 backups/ 恢复 → 台账留痕
 
 时间衰减：`decay = 1.0 if days <= decay_days else max(0.2, 1.0 - (days - decay_days) / (decay_days * 2))`
 
+## 规则细化（v0.2）
+
+### 细化信号
+
+| 信号 | 判定 | 产出 |
+|------|------|------|
+| refinement | 已有条目主干命中 + 细化触发词（还要注意 / 补充 / 调整 / 另外…） | diff 提案（原条目 → 建议改动） |
+
+### 细化数据流
+
+```
+memory/MEMORY.md 解析条目（parse_rules_entries：- 列表项 / ### 标题，按 ## 分组）
+        │  detect_refinement_signals: 条目主干关键词 + 触发词
+        ▼
+refinement signals[] {entry, head, triggers, quote}
+        │  build_refinement_proposals: 合并 → diff 提案（kind=refine）
+        ▼
+proposals/pending/{id}.md   ← 人工审批（与新增提案同一审批流）
+        │  apply: _apply_refine 精确替换条目 + 全文件备份
+        ▼
+memory/MEMORY.md（版本化，可回滚）
+```
+
+### 语义匹配（可插拔）
+
+`semantic_similarity(query, text, provider)` 是唯一匹配入口：
+
+- `provider=local`（默认，零依赖）：difflib SequenceMatcher
+- `provider=none`：关闭
+- 其他 provider（openai / sentence-transformers）：在 `rules/config.json` 的 `embedding.provider` 配置，按 docs/embedding.md 接入，不触碰其余流水线
+
 ## 模块职责
 
 | 模块 | 职责 |
@@ -78,6 +109,6 @@ applied  →  rollback(): 从 backups/ 恢复 → 台账留痕
 
 ## 后续演进
 
-- **v0.2 规则细化**：把已有条目的增量补充识别为 refinement 信号，生成 diff 提案，版本化更新
-- **v0.2 语义匹配**：可选 embedding 后端（接口预留，不破坏零依赖）
+- **v0.2（已完成）**：规则细化（diff 提案 + 版本化替换）、语义匹配可插拔接口
+- **v0.3**：平台适配器开箱（OpenClaw / Claude Code hook 脚本）、Web 审批 UI
 - **v1.0 硬写保护**：宿主框架集成文件系统权限，软约束升级为硬约束

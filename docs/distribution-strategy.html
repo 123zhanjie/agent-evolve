@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分发形态决策：CLI 内核 + Skill 为主、插件为辅</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1f2430; --muted:#6b7280; --line:#e5e7eb; --blue:#2563eb; --green:#16a34a; --amber:#d97706; --red:#dc2626; --violet:#7c3aed; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink); line-height:1.75; padding:40px 20px; }
+  .wrap { max-width:880px; margin:0 auto; }
+  header { text-align:center; margin-bottom:32px; }
+  header h1 { font-size:26px; }
+  header p { color:var(--muted); font-size:15px; margin-top:6px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px 26px; margin-bottom:20px; }
+  h2 { font-size:18px; margin-bottom:12px; }
+  p, li { font-size:14.5px; }
+  ul, ol { padding-left:22px; }
+  .muted { color:var(--muted); font-size:13.5px; }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; margin-top:8px; }
+  th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:#f9fafb; font-weight:600; }
+  tr:last-child td { border-bottom:none; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:999px; font-size:13px; font-weight:600; }
+  .b-blue{background:#dbeafe;color:var(--blue);} .b-green{background:#dcfce7;color:var(--green);} .b-red{background:#fee2e2;color:var(--red);}
+  .conclusion { background:#eff6ff; border:1px solid #bfdbfe; border-radius:12px; padding:16px 20px; }
+  footer { text-align:center; color:var(--muted); font-size:13px; margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>分发形态决策</h1>
+  <p>agent-evolve · CLI 内核 + Skill 为主、插件为辅</p>
+</header>
+
+<section>
+  <h2>结论</h2>
+  <div class="conclusion"><p><b>不是二选一。</b>核心逻辑做成独立 CLI 工具（pip 包），分发以 Skill 为主（跨平台公约数），插件按平台需求逐步补（自动 hook、审批 UI）。</p></div>
+</section>
+
+<section>
+  <h2>三种形态的本质</h2>
+  <table>
+    <tr><th>形态</th><th>本质</th><th>携带什么</th><th>平台绑定</th><th>自动化</th></tr>
+    <tr><td>CLI 工具</td><td>可执行程序</td><td>逻辑 + 状态</td><td>无</td><td>手动 / 被调用</td></tr>
+    <tr><td>Skill</td><td>指令文档</td><td>规则 + 流程</td><td>弱（各平台统一 skills 规范）</td><td>靠智能体执行</td></tr>
+    <tr><td>插件</td><td>宿主集成代码</td><td>逻辑 + hook + UI</td><td>强（每平台一套 API）</td><td>自动触发、后台运行</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>为什么不用纯 Skill 或纯插件</h2>
+  <ul>
+    <li><b>纯 Skill 的问题</b>：Skill 本质是 Markdown 指令，打包不了可执行逻辑。扫描、统计、台账、备份仍需外部 CLI 承载，Skill 只能教智能体何时调用。</li>
+    <li><b>纯插件的问题</b>：插件绑定宿主 API（每平台一套），核心逻辑要重复实现 N 份，维护成本高，违背"任何智能体可用"的定位。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>决策矩阵</h2>
+  <table>
+    <tr><th>需求</th><th>选型</th></tr>
+    <tr><td>逻辑只有一份、全平台复用</td><td><span class="badge b-blue">CLI 内核</span></td></tr>
+    <tr><td>让智能体"知道什么时候用"</td><td><span class="badge b-green">Skill 入口</span></td></tr>
+    <tr><td>对话结束自动触发扫描</td><td><span class="badge b-blue">插件 hook</span></td></tr>
+    <tr><td>审批卡片 / Web 管理后台</td><td><span class="badge b-blue">插件</span></td></tr>
+    <tr><td>不侵入宿主、随装随卸</td><td><span class="badge b-green">Skill</span></td></tr>
+    <tr><td>系统级写保护（硬约束）</td><td><span class="badge b-red">插件或框架内置</span></td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>各平台形态</h2>
+  <table>
+    <tr><th>平台</th><th>当前形态（已交付）</th><th>v0.3+ 演进</th></tr>
+    <tr><td>Claude Code</td><td>Skill 入口 SKILL.md</td><td>可选插件：Stop hook 自动扫描</td></tr>
+    <tr><td>Codex</td><td>AGENTS.md 规则声明</td><td>插件 / 命令扩展</td></tr>
+    <tr><td>OpenClaw</td><td>skill + cron 定时扫描</td><td>平台插件（审批卡片）</td></tr>
+    <tr><td>DSh</td><td>规则文档 / skill 挂载</td><td>视宿主能力而定</td></tr>
+  </table>
+</section>
+
+<footer>agent-evolve · 分发形态决策文档</footer>
+</div>
+</body>
+</html>

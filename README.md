@@ -1,5 +1,7 @@
 # agent-evolve
 
+![agent-evolve banner](docs/assets/agent-evolve-banner.svg)
+
 **Universal Agent Evolution Protocol** — 让任何智能体从对话中自动发现用户偏好，经人工审批后沉淀为长期记忆。
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
